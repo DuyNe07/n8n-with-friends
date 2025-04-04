@@ -1,0 +1,51 @@
+version: '3.8'
+
+volumes:
+  export_data:
+
+services:
+  n8n:
+    container_name: n8n-main
+    image: n8nio/n8n:latest
+    env_file:
+      - ./.env
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./data/.n8n:/home/node/.n8n
+      - ./data/export:/HiAI/data
+    restart: always
+    networks:
+      - n8n-network
+
+  n8n-worker:
+    container_name: n8n-worker-main
+    image: n8nio/n8n:latest
+    command: worker
+    env_file:
+      - ./.env
+    volumes:
+      - ./data/.n8n:/home/node/.n8n
+      - ./data/export:/HiAI/data
+    restart: always
+    networks:
+      - n8n-network
+
+  ngrok:
+    container_name: ngrok-main
+    image: ngrok/ngrok:latest
+    env_file:
+      - ./.env
+    command:
+      - "start"
+      - "--all"
+      - "--config"
+      - "/etc/ngrok.yml"
+    volumes:
+      - ./ngrok.yml:/etc/ngrok.yml:ro
+    networks:
+      - n8n-network
+
+networks:
+  n8n-network:
+    external: true

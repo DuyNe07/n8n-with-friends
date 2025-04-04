@@ -1,0 +1,5 @@
+supabase/volumes
+n8n-ngrok/data/.n8n
+redis/data/*
+/n8n-ngrok/ngrok.yml
+*.env

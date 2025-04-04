@@ -1,0 +1,22 @@
+volumes:
+  redis_data:
+
+services:
+  redis:
+    container_name: n8n-redis-main
+    image: redis:alpine
+    restart: always
+    volumes:
+      - ./data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - n8n-network
+
+networks:
+  n8n-network:
+    external: true

@@ -1,0 +1,171 @@
+services:
+  supabase-studio:
+    container_name: supabase-studio
+    image: supabase/studio:latest
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+    networks:
+      - n8n-network
+
+  supabase-kong:
+    container_name: supabase-kong
+    image: kong:2.1
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+    volumes:
+      - ./volumes/api/kong.yml:/etc/kong/kong.yml:ro
+    networks:
+      - n8n-network
+
+  supabase-db:
+    container_name: supabase-db
+    image: supabase/postgres:15.1.0.117
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /var/lib/postgresql/data
+      # Cấu hình thêm cho vector
+      POSTGRES_EXTENSIONS: pg_stat_statements,pgcrypto,pgjwt,uuid-ossp,pg_graphql,pgsodium,plpgsql,plv8,http,pg_net,pgaudit,pg_repack,pg_stat_monitor,pg_cron,pgvector
+    volumes:
+      - ./volumes/db:/var/lib/postgresql/data
+    networks:
+      - n8n-network
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+
+  supabase-storage:
+    container_name: supabase-storage
+    image: supabase/storage-api:latest
+    restart: always
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      TENANTS: '{"default": {"anonKey": "${ANON_KEY}", "serviceKey": "${SERVICE_ROLE_KEY}"}}'
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@supabase-db:5432/${POSTGRES_DB}
+      PGOPTIONS: "-c search_path=storage,public"
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: ${STORAGE_BACKEND}
+      FILE_STORAGE_BACKEND_PATH: ${FILE_STORAGE_BACKEND_PATH}
+    volumes:
+      - ./volumes/storage:/var/lib/storage
+    networks:
+      - n8n-network
+
+  supabase-auth:
+    container_name: supabase-auth
+    image: supabase/gotrue:v2.171.0-rc.9
+    depends_on:
+      - supabase-db
+    restart: always
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@supabase-db:5432/${POSTGRES_DB}?search_path=auth
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: false
+      GOTRUE_ENABLE_SIGNUP: true
+    networks:
+      - n8n-network
+
+  supabase-rest:
+    container_name: supabase-rest
+    image: postgrest/postgrest:latest
+    depends_on:
+      - supabase-db
+    restart: always
+    environment:
+      PGRST_DB_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@supabase-db:5432/${POSTGRES_DB}
+      PGRST_DB_SCHEMA: public,storage
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_MAX_ROWS: ${PGRST_MAX_ROWS}
+    networks:
+      - n8n-network
+
+  supabase-realtime:
+    container_name: supabase-realtime
+    image: supabase/realtime:latest
+    depends_on:
+      - supabase-db
+    restart: always
+    environment:
+      DB_HOST: supabase-db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      PORT: 4000
+      JWT_SECRET: ${JWT_SECRET}
+      REPLICATION_MODE: RLS
+      REPLICATION_POLL_INTERVAL: 100
+      SECURE_CHANNELS: "false"
+      SLOT_NAME: supabase_realtime_rls
+      TEMPORARY_SLOT: "true"
+    networks:
+      - n8n-network
+
+  supabase-meta:
+    container_name: supabase-meta
+    image: supabase/postgres-meta:v0.88.2
+    depends_on:
+      - supabase-db
+    restart: always
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: supabase-db
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${POSTGRES_DB}
+      PG_META_DB_USER: ${POSTGRES_USER}
+    networks:
+      - n8n-network
+
+  supabase-imgproxy:
+    container_name: supabase-imgproxy
+    image: darthsim/imgproxy:latest
+    restart: always
+    environment:
+      IMGPROXY_BIND: :5001
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
+      IMGPROXY_USE_ETAG: "true"
+    volumes:
+      - ./volumes/imgproxy:/var/lib/imgproxy
+    networks:
+      - n8n-network
+
+  supabase-vector:
+    container_name: supabase-vector
+    image: supabase/edge-runtime:v1.68.0-develop.13
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@supabase-db:5432/${POSTGRES_DB}
+      VECTOR_EXTENSION: ${VECTOR_EXTENSION}
+      VECTOR_HANDLE_FUNCTIONS: ${VECTOR_HANDLE_FUNCTIONS}
+      VECTOR_ENABLE_NEW_MIGRATION: ${VECTOR_ENABLE_NEW_MIGRATION}
+    volumes:
+      - ./volumes/vector:/var/lib/vector
+    networks:
+      - n8n-network
+
+networks:
+  n8n-network:
+    external: true

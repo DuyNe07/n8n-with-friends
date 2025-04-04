@@ -1,0 +1,185 @@
+### Tổng quan về hệ thống
+
+Hệ thống của bạn gồm 3 phần chính:
+
+1. **n8n & ngrok**: Hệ thống quản lý tác vụ tự động với khả năng tiếp cận từ internet thông qua ngrok.
+2. **Redis**: Dùng để quản lý hàng đợi và lưu trữ trạng thái của n8n.
+3. **Supabase**: Nền tảng back-end với PostgreSQL và hỗ trợ vector database (pgvector) để lưu trữ và quản lý dữ liệu AI.
+
+### Cấu trúc thư mục
+
+```
+D:\Docker\n8n\
+├── start-all.bat                # Script khởi động tất cả dịch vụ
+├── stop-all.bat                 # Script dừng tất cả dịch vụ
+├── n8n-ngrok\
+│   ├── .env                     # Cấu hình môi trường cho n8n
+│   ├── docker-compose.yml       # Cấu hình Docker cho n8n và ngrok
+│   ├── ngrok.yml                # Cấu hình ngrok
+│   └── data\
+│       └── export\              # Thư mục xuất dữ liệu từ n8n
+├── redis\
+│   ├── docker-compose.yml       # Cấu hình Docker cho Redis
+│   └── data\                    # Dữ liệu Redis
+└── supabase\
+    ├── .env                     # Cấu hình môi trường cho Supabase
+    ├── docker-compose.yml       # Cấu hình Docker cho Supabase
+    └── volumes\                 # Dữ liệu Supabase
+        ├── api\
+        │   └── kong.yml         # Cấu hình Kong API Gateway
+        ├── db\                  # Dữ liệu PostgreSQL
+        ├── imgproxy\            # Dữ liệu imgproxy
+        ├── storage\             # Dữ liệu lưu trữ
+        └── vector\              # Dữ liệu vector database
+```
+
+### Giải thích chi tiết từng thành phần
+
+#### 1. Cấu hình n8n và ngrok
+
+**n8n** được cấu hình để:
+- Sử dụng PostgreSQL từ Supabase làm cơ sở dữ liệu chính
+- Sử dụng Redis để quản lý hàng đợi tác vụ
+- Chạy ở chế độ `external` để có thể quản lý tác vụ bên ngoài container
+- Có một worker riêng để xử lý các tác vụ nặng
+- Mount thư mục để lưu dữ liệu bền vững khi container được khởi động lại
+
+**ngrok** được cấu hình để:
+- Kết nối với n8n qua cổng 5678
+- Sử dụng domain cố định `select-regularly-emu.ngrok-free.app`
+- Làm cho n8n có thể tiếp cận được từ bên ngoài mạng nội bộ
+
+#### 2. Cấu hình Redis
+
+Redis được cấu hình đơn giản:
+- Sử dụng image alpine nhẹ nhàng
+- Lưu dữ liệu vào thư mục `/data` được mount từ máy host
+- Bật chế độ AOF (Append Only File) để đảm bảo dữ liệu không bị mất
+
+#### 3. Cấu hình Supabase
+
+Supabase là nền tảng back-end hoàn chỉnh với nhiều dịch vụ:
+
+**Database (PostgreSQL)**: 
+- Sử dụng Postgres phiên bản 15 với pgvector đã được cài đặt sẵn
+- Lưu dữ liệu vào thư mục volumes/db để đảm bảo dữ liệu bền vững
+
+**Auth Service**:
+- Xử lý xác thực và ủy quyền người dùng
+- Sử dụng JWT để bảo mật
+
+**Storage Service**:
+- Quản lý việc lưu trữ file
+- Tích hợp với PostgreSQL để quản lý metadata
+
+**Realtime Service**:
+- Cung cấp tính năng realtime updates
+- Sử dụng websocket để gửi thông báo
+
+**Rest API**:
+- Cung cấp REST API để truy cập dữ liệu
+- Tích hợp với hệ thống bảo mật
+
+**Vector Support**:
+- Hỗ trợ pgvector để lưu trữ vector embeddings
+- Cho phép thực hiện tìm kiếm ngữ nghĩa và các hoạt động AI khác
+
+**Kong API Gateway**:
+- Quản lý routing và bảo mật cho các API
+- Cung cấp kiểm soát truy cập và xác thực
+
+**Studio**:
+- Giao diện web để quản lý dữ liệu và cấu hình
+- Có thể truy cập qua http://localhost:3000
+
+#### Các key và secret
+
+Tất cả các khóa được tạo với tiền tố "TaraJSC-" theo yêu cầu:
+- Database: `TaraJSC-postgres`
+- JWT Secret: `TaraJSC-jwt-secret`
+- Anon Key: `TaraJSC-anon-key`
+- Service Role Key: `TaraJSC-service-role-key`
+- Dashboard Password: `TaraJSC-dashboard`
+- n8n Encryption Key: `TaraJSC-encryption-key`
+
+### Tích hợp với n8n
+
+n8n được cấu hình để kết nối với PostgreSQL của Supabase:
+- Host: `supabase-db`
+- Port: `5432`
+- Database: `postgres`
+- User: `postgres`
+- Password: `TaraJSC-postgres`
+
+Điều này cho phép n8n lưu trữ workflow và dữ liệu trong cơ sở dữ liệu PostgreSQL của Supabase. Ngoài ra, n8n có thể tương tác với Supabase thông qua API của nó:
+- URL: `http://supabase-kong:8000`
+- API Key: `TaraJSC-anon-key` hoặc `TaraJSC-service-role-key`
+
+### Hướng dẫn sử dụng
+
+1. **Khởi động tất cả dịch vụ**:
+   - Chạy file start-all.bat bằng cách nhấp đúp vào nó
+   - Script sẽ khởi động Redis, Supabase và n8n+ngrok theo thứ tự
+   - Khi hoàn tất, bạn sẽ thấy các URL để truy cập dịch vụ
+
+2. **Dừng tất cả dịch vụ**:
+   - Chạy file stop-all.bat bằng cách nhấp đúp vào nó
+   - Script sẽ dừng các dịch vụ theo thứ tự ngược lại
+
+3. **Truy cập các dịch vụ**:
+   - n8n: http://localhost:5678
+   - n8n qua ngrok: https://select-regularly-emu.ngrok-free.app
+   - Supabase Studio: http://localhost:3000
+   - Supabase API: http://localhost:8000
+
+### Sử dụng Supabase với n8n cho Vector Database
+
+Để sử dụng Supabase làm vector database trong n8n:
+
+1. Truy cập Supabase Studio (http://localhost:3000) và đăng nhập với tài khoản:
+   - Username: `admin`
+   - Password: `TaraJSC-dashboard`
+
+2. Tạo bảng để lưu trữ vector:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   
+   CREATE TABLE documents (
+     id SERIAL PRIMARY KEY,
+     content TEXT,
+     metadata JSONB,
+     embedding VECTOR(384)  -- Điều chỉnh kích thước vector tùy theo mô hình embedding
+   );
+   
+   CREATE INDEX ON documents USING ivfflat (embedding vector_cosine_ops);
+   ```
+
+3. Trong n8n, bạn có thể:
+   - Kết nối đến Supabase Database trực tiếp qua node PostgreSQL
+   - Hoặc sử dụng Supabase API thông qua HTTP Request node
+
+4. Để lưu vector embedding:
+   ```sql
+   INSERT INTO documents (content, metadata, embedding) 
+   VALUES ('Nội dung văn bản', '{"source": "tên file"}', '[0.1, 0.2, ..., 0.384]');
+   ```
+
+5. Để tìm kiếm vector tương tự:
+   ```sql
+   SELECT content, metadata, 1 - (embedding <=> '[0.1, 0.2, ..., 0.384]') as similarity
+   FROM documents
+   ORDER BY embedding <=> '[0.1, 0.2, ..., 0.384]'
+   LIMIT 5;
+   ```
+
+### Lưu ý quan trọng
+
+1. **Network và kết nối**: Tất cả các dịch vụ được kết nối thông qua mạng `n8n-network`, cho phép chúng giao tiếp với nhau bằng tên container.
+
+2. **Dữ liệu bền vững**: Tất cả dữ liệu được lưu trên máy host, không phải trong container, đảm bảo dữ liệu không bị mất khi container bị xóa.
+
+3. **Môi trường Windows**: Các script được thiết kế để chạy trên Windows 11 với Docker Desktop, sử dụng đường dẫn và lệnh Windows phù hợp.
+
+4. **Cập nhật ngrok**: Nếu domain ngrok hết hạn, bạn cần cập nhật file `ngrok.yml` với domain và token mới.
+
+Bây giờ bạn có một hệ thống hoàn chỉnh với n8n, Redis, và Supabase (với hỗ trợ vector) đều chạy trong Docker và có thể kết nối với nhau. Bạn có thể sử dụng nó để xây dựng các workflow tự động và xử lý dữ liệu AI trong n8n với vector database từ Supabase.
