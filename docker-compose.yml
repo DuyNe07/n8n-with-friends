@@ -1,0 +1,131 @@
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+  export_data:
+
+services:
+  # PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    env_file:
+      - ./postgres/conf/.env
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - n8n-network
+
+  # Redis
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: always
+    env_file:
+      - ./redis/conf/.env
+    # command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./redis/data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - n8n-network
+
+  # pgAdmin - Giao diện PostgreSQL <-- Dịch vụ MỚI
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: tara@tara.com.vn # Thay bằng email của bạn
+      PGADMIN_DEFAULT_PASSWORD: tara # Thay bằng mật khẩu bạn mong muốn
+    volumes:
+      - ./postgres/volumes/pgAdmin:/var/lib/pgadmin # Mount thư mục host vào container
+    ports:
+      - "5050:80" # Truy cập giao diện qua http://localhost:5050
+    depends_on:
+      - postgres
+    networks:
+      - n8n-network
+
+  # Redis Commander - Giao diện Redis <-- Dịch vụ MỚI
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    restart: always
+    env_file:
+      - ./redis/conf/.env
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./redis/volumes/commander:/data
+    networks:
+      - n8n-network
+    depends_on:
+      - redis
+
+  # n8n
+  n8n:
+    container_name: n8n-main
+    image: n8nio/n8n:latest
+    env_file:
+      - ./n8n-ngrok/conf/.env
+    # environment:
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./n8n-ngrok/data/.n8n:/home/node/.n8n
+      - ./n8n-ngrok/data/export:/HiAI/data
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - n8n-network
+
+  # n8n worker
+  n8n-worker:
+    container_name: n8n-worker-main
+    image: n8nio/n8n:latest
+    command: worker
+    env_file:
+      - ./n8n-ngrok/conf/.env
+    environment:
+      - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
+    volumes:
+      - ./n8n-ngrok/data/.n8n:/home/node/.n8n
+      - ./n8n-ngrok/data/export:/HiAI/data
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+      - n8n
+    networks:
+      - n8n-network
+
+  # ngrok
+  ngrok:
+    container_name: ngrok-main
+    image: ngrok/ngrok:latest
+    env_file:
+      - ./n8n-ngrok/conf/.env
+    command:
+      - "start"
+      - "--all"
+      - "--config"
+      - "/etc/ngrok.yml"
+    volumes:
+      - ./n8n-ngrok/conf/ngrok.yml:/etc/ngrok.yml:ro
+    depends_on:
+      - n8n
+    networks:
+      - n8n-network
+
+networks:
+  n8n-network:
+    driver: bridge

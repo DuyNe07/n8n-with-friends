@@ -1,0 +1,6 @@
+n8n-ngrok/data
+redis/data
+redis/volumes
+postgres/data
+postgres/volumes
+n8n-ngrok/conf/ngrok.yml

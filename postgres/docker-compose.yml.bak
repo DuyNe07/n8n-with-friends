@@ -1,0 +1,21 @@
+# D:\Docker\n8n\postgres\docker-compose.yml
+volumes:
+  postgres_data:
+
+services:
+  postgres: # <-- Đổi lại thành 'postgres'
+    image: postgres:15
+    container_name: postgres-for-n8n # Đổi container_name cho rõ ràng nếu muốn
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - n8n-network
+
+networks:
+  n8n-network:
+    external: true

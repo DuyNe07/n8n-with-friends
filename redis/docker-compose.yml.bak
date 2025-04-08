@@ -1,0 +1,24 @@
+# D:\Docker\n8n\redis\docker-compose.yml
+volumes:
+  redis_data:
+
+services:
+  redis: # <-- Đổi lại thành 'redis'
+    image: redis:alpine
+    container_name: redis # Đổi container_name cho rõ ràng nếu muốn
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - REDIS_ARGS=--requirepass ${REDIS_PASSWORD}
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - n8n-network
+
+networks:
+  n8n-network:
+    external: true
